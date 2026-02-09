@@ -55,6 +55,16 @@
 #define MSG_USECRYPTO	0x400
 #define MSG_USESIGNATURE	0x800
 
+#define CELL_FS_O_CREAT         000100
+#define CELL_FS_O_EXCL          000200
+#define CELL_FS_O_TRUNC         001000
+#define CELL_FS_O_APPEND        002000
+#define CELL_FS_O_ACCMODE       000003
+#define        CELL_FS_O_RDONLY 000000
+#define        CELL_FS_O_RDWR   000002
+#define        CELL_FS_O_WRONLY 000001
+#define CELL_FS_O_MSELF		010000
+
 sys_semaphore_t data_channel_wait_mutex;
 
 static int active_socket[4] = {NONE, NONE, NONE, NONE}; // 0=FTP, 1=WWW, 2=PS3MAPI, 3=PS3NETSRV

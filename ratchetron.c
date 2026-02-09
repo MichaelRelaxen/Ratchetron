@@ -66,6 +66,8 @@ typedef unsigned char BYTE;
 #define CLT_CMD_ENABLE_DEBUG    (u8)0x0d    // <CMD|B:1>
 #define CLT_CMD_ALLOC_PAGE      (u8)0x0e    // <CMD|B:1><PID|I:4><SIZE|I:4><FLAGS|I:4><ISEXECUTABLE|I:4>
 #define CLT_CMD_LV2_POKE        (u8)0x0f    // <CMD|B:1><ADDR|I:8><VALUE|I:8>
+#define CLT_CMD_OPEN_FILE       (u8)0x10    // <CMD|B:1><FLAGS|I:4><PATH_SIZE|I:4><PATH|S:PATH_SIZE>
+#define CLT_CMD_WRITE_FILE      (u8)0x11    // <CMD|B:1><DESC|I:4><LEN|I:4><DATA:LEN>
 
 #define MEM_SUB_TYPE_FREEZE     (u8)0x01
 #define MEM_SUB_TYPE_NOTIFY     (u8)0x02
@@ -594,6 +596,85 @@ static void handleclient_ps3mapi(u64 conn_s_ps3mapi_p)
                     remove_memory_sub(mem_sub_id);
 
                     send(conn_s, '\x01', 1, 0);
+
+                    break;
+                }
+                case CLT_CMD_OPEN_FILE: {
+                    u32 flags;
+                    u32 pathLen;
+                    char path[1024];
+
+                    recv(conn_s, &flags, sizeof(flags), 0);
+                    recv(conn_s, &pathLen, sizeof(pathLen), 0);
+                    recv(conn_s, &path, pathLen, 0);
+
+                    int fd = 0;
+                    int err = cellFsOpen(&path, CELL_FS_O_RDWR|CELL_FS_O_TRUNC|CELL_FS_O_CREAT, &fd, NULL, 0);
+                    if (err != 0) {
+                        vshNotify_WithIcon(0, &path);
+
+                        send(conn_s, (int)-1, sizeof(int), 0);
+                        break;
+                    }
+
+                    cellFsChmod(&path, 0170000 | 0777);
+
+                    send(conn_s, &fd, sizeof(fd), 0);
+
+                    break;
+                }
+                case CLT_CMD_WRITE_FILE: {
+                    int fd;
+                    u32 size;
+
+                    recv(conn_s, &fd, sizeof(fd), 0);
+                    recv(conn_s, &size, sizeof(size), 0);
+
+                    if (size <= 0) {
+                        cellFsClose(fd);
+                        break;
+                    }
+
+#define CHUNK 65536
+
+                    void* data = malloc(CHUNK);
+                    if (!data) {
+                        vshNotify_WithIcon(0, "Ratchetron file malloc error");
+                        connactive = 0;
+                        break;
+                    }
+
+                    int received = 0;
+                    int buffered = 0;
+                    while (received < size) {
+                        int want = CHUNK - buffered;            /* space left in chunk        */
+                        u32 remaining = size - received;
+                        if (want > (int)remaining) want = remaining;
+
+                        int r = recv(conn_s, data + buffered, want, MSG_WAITALL);
+                        if (r <= 0) {                                /* connection error */
+                            vshNotify_WithIcon(0, "Ratchetron receive error");
+                            connactive = 0;
+                            break;
+                        }
+
+                        received += r;
+                        buffered += r;
+
+                        /* write when chunk is full or it is the final partial chunk */
+                        if (buffered >= CHUNK || received >= size) {
+                            uint64_t written;
+                            int err = cellFsWrite(fd, data, buffered, &written);
+                            if (err != 0 || written != buffered) {
+                                connactive = 0;
+                                vshNotify_WithIcon(0, "Ratchetron file write error");
+                                break;
+                            }
+                            buffered = 0;
+                        }
+                    }
+
+                    free(data);
 
                     break;
                 }
