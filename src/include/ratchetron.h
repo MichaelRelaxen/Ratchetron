@@ -30,7 +30,7 @@
 #include "types.h"
 
 #include "ps3mapi.h"
-#include "buffer_size.h"
+// #include "buffer_size.h"
 #include "socket.h"
 #include "thread.h"
 #include "vsh_notify.h"
